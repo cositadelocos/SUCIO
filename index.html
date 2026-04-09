@@ -296,6 +296,11 @@ Basado en los findings anteriores, este archivo implementa:
     let frameCount = 0;
     let fps = 0;
 
+    // Variables estado de limpieza
+    let isCleaningFinished = false;
+    let cleanPercentage = 0;
+    let renderFrameCount = 0;
+
     // Estado de muñecas para tracking
     const wristState = {
       left: { prev: null, visible: false, firstContact: 0 },
@@ -861,9 +866,26 @@ Basado en los findings anteriores, este archivo implementa:
           videoTexture.baseTexture.update();
         }
 
-        // 2. Re-acumulación de polvo
-        maskCtx.fillStyle = `rgba(0, 0, 0, ${CONFIG.DUST_FADE_RATE})`;
-        maskCtx.fillRect(0, 0, CONFIG.MASK_SIZE, CONFIG.MASK_SIZE);
+        if (!isCleaningFinished) {
+          // 2. Re-acumulación de polvo progresiva
+          maskCtx.fillStyle = `rgba(0, 0, 0, ${CONFIG.DUST_FADE_RATE})`;
+          maskCtx.fillRect(0, 0, CONFIG.MASK_SIZE, CONFIG.MASK_SIZE);
+
+          // Revisar nivel de limpieza cada 30 frames para no afectar rendimiento
+          renderFrameCount++;
+          if (renderFrameCount % 30 === 0) {
+            checkCleanliness();
+          }
+        } else {
+          // Ya terminó de limpiar! Hacer transición suave para quitar completamente el filtro
+          if (dustSprite && dustSprite.alpha > 0) {
+            dustSprite.alpha -= 0.01; // Ajustar velocidad de desvanecimiento
+            if (dustSprite.alpha <= 0) {
+              dustSprite.alpha = 0;
+              dustSprite.visible = false;
+            }
+          }
+        }
 
         // 3. Procesar mouse fallback
         processMouseFallback();
@@ -878,6 +900,27 @@ Basado en los findings anteriores, este archivo implementa:
           updateWristsCount();
         }
       });
+    }
+
+    function checkCleanliness() {
+      const imgData = maskCtx.getImageData(0, 0, CONFIG.MASK_SIZE, CONFIG.MASK_SIZE).data;
+      let cleanPixels = 0;
+      let totalSamples = 0;
+
+      // Solo evaluamos el canal Rojo de 1 de cada 16 pixeles para optimizar (saltos de 64 bytes)
+      for (let i = 0; i < imgData.length; i += 64) {
+        if (imgData[i] > 128) { // Canal rojo (r,g,b,a)
+          cleanPixels++;
+        }
+        totalSamples++;
+      }
+
+      cleanPercentage = cleanPixels / totalSamples;
+      
+      // Si más del 75% del espejo está limpio, quitamos el efecto por completo
+      if (cleanPercentage > 0.75) {
+        isCleaningFinished = true;
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════
