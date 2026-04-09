@@ -408,7 +408,11 @@ Basado en los findings anteriores, este archivo implementa:
       // Primero intentar obtener el stream de la cámara directamente
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720, facingMode: 'user' }
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
         });
         videoElement.srcObject = stream;
         videoElement.play();
@@ -421,17 +425,22 @@ Basado en los findings anteriores, este archivo implementa:
         onFrame: async () => {
           await pose.send({ image: videoElement });
         },
-        width: 1280,
-        height: 720,
+        facingMode: 'user'
       });
 
       await camera.start();
 
       // Asegurar que el video esté reproduciéndose
       videoElement.play().catch(e => console.log('Video ya reproduciéndose'));
-
-      // Crear sprites de video y polvo después de que la cámara inicie
-      createSprites();
+      
+      // Esperar a que el video tenga dimensiones antes de crear sprites
+      if (videoElement.videoWidth === 0) {
+        videoElement.addEventListener('loadedmetadata', () => {
+          createSprites();
+        }, { once: true });
+      } else {
+        createSprites();
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -457,13 +466,13 @@ Basado en los findings anteriores, este archivo implementa:
         webcamSprite.width = window.innerHeight * videoAspect;
       }
 
+      // Volver a aplicar el efecto espejo (el set de width/height resetea el scale.x a positivo)
+      webcamSprite.scale.x = -Math.abs(webcamSprite.scale.x);
+
       // Centrar
       webcamSprite.anchor.set(0.5);
       webcamSprite.x = window.innerWidth / 2;
       webcamSprite.y = window.innerHeight / 2;
-
-      // Flip horizontal para efecto espejo
-      webcamSprite.scale.x *= -1;
 
       // Asegurar que sea visible
       webcamSprite.alpha = 1;
@@ -897,7 +906,7 @@ Basado en los findings anteriores, este archivo implementa:
 
     // Manejar resize
     window.addEventListener('resize', () => {
-      if (webcamSprite) {
+      if (webcamSprite && videoElement.videoWidth) {
         const screenAspect = window.innerWidth / window.innerHeight;
         const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
 
@@ -908,6 +917,9 @@ Basado en los findings anteriores, este archivo implementa:
           webcamSprite.height = window.innerHeight;
           webcamSprite.width = window.innerHeight * videoAspect;
         }
+
+        // Mantener el efecto espejo
+        webcamSprite.scale.x = -Math.abs(webcamSprite.scale.x);
 
         webcamSprite.x = window.innerWidth / 2;
         webcamSprite.y = window.innerHeight / 2;
